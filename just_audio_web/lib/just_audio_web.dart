@@ -270,7 +270,7 @@ class Html5AudioPlayer extends JustAudioPlayer {
       final String canPlayType = _audioElement.canPlayType(
         'application/vnd.apple.mpegurl',
       );
-      canPlayHls = canPlayType != '';
+      canPlayHls = canPlayType != '' && canPlayType != 'maybe';
     } catch (e) {
       canPlayHls = false;
     }
