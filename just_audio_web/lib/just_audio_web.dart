@@ -865,11 +865,13 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
 
   @override
   Duration? get duration {
-    return _duration;
-    //final seconds = _audioElement.duration;
-    //return seconds.isFinite
-    //    ? Duration(milliseconds: (seconds * 1000).toInt())
-    //    : null;
+    // For live streams, use the current audio element duration
+    // instead of the cached _duration which doesn't update
+    final seconds = _audioElement.duration;
+    final duration = seconds.isFinite
+        ? Duration(milliseconds: (seconds * 1000).toInt())
+        : null;
+    return duration;
   }
 
   @override
