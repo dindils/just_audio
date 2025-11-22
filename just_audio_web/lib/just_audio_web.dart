@@ -804,6 +804,8 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
   Duration? _duration;
   Completer<dynamic>? _completer;
   int? _initialPos;
+  bool _isHlsLiveStream = false;
+  bool _hasSetLiveEdgePosition = false;
 
   UriAudioSourcePlayer(
     Html5AudioPlayer html5AudioPlayer,
@@ -821,7 +823,17 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
   @override
   Future<Duration?> load([int? initialPosition]) async {
     _initialPos = initialPosition;
-    _resumePos = (initialPosition ?? 0) / 1000.0;
+    // Check if this is an HLS stream
+    _isHlsLiveStream = uri.toString().contains('m3u8');
+    _hasSetLiveEdgePosition = false;
+
+    if (_isHlsLiveStream && initialPosition == null) {
+      // For HLS live streams without explicit position, we'll defer setting position until ready
+      _resumePos = null; // Will be set when stream is ready
+    } else {
+      _resumePos = (initialPosition ?? 0) / 1000.0;
+    }
+
     _duration = await html5AudioPlayer.loadUri(
       uri,
       initialPosition != null ? Duration(milliseconds: initialPosition) : null,
@@ -832,7 +844,21 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
 
   @override
   Future<void> play() async {
-    _audioElement.currentTime = _resumePos!;
+    // For HLS live streams, set position to live edge on first play
+    if (_isHlsLiveStream && !_hasSetLiveEdgePosition) {
+      final seconds = _audioElement.duration;
+      if (seconds.isFinite && seconds > 0) {
+        // For live streams, seek to near the end (live edge)
+        // Leave a small buffer (10 seconds) from the very end to avoid buffering issues
+        final liveEdgePosition = max(0.0, seconds - 10.0);
+        _resumePos = liveEdgePosition;
+        _audioElement.currentTime = liveEdgePosition;
+        _hasSetLiveEdgePosition = true;
+      }
+    } else if (_resumePos != null) {
+      _audioElement.currentTime = _resumePos!;
+    }
+
     await _audioElementQueue.play();
     _completer = Completer<dynamic>();
     await _completer!.future;
