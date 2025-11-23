@@ -956,27 +956,49 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
 
   @override
   Duration get bufferedPosition {
-    if (_audioElement.buffered.length > 0) {
-      final bufferedEnd =
-          _audioElement.buffered.end(_audioElement.buffered.length - 1);
-
-      // For HLS live streams, make buffered position relative to seekable window
-      if (_isHlsLiveStream) {
-        final seekable = _audioElement.seekable;
-        if (seekable.length > 0) {
-          final seekableStart = seekable.start(0);
-          final relativeBufferedPosition = bufferedEnd - seekableStart;
-          return Duration(
-              milliseconds: (relativeBufferedPosition * 1000).toInt());
-        }
-      }
-
-      return Duration(
-        milliseconds: (bufferedEnd * 1000).toInt(),
-      );
-    } else {
+    if (_audioElement.buffered.length == 0) {
       return Duration.zero;
     }
+
+    final currentTime = _audioElement.currentTime;
+    double bufferedEnd = 0;
+
+    // Find the buffered range that contains or is closest to the current position
+    for (int i = 0; i < _audioElement.buffered.length; i++) {
+      final rangeStart = _audioElement.buffered.start(i);
+      final rangeEnd = _audioElement.buffered.end(i);
+
+      // If current time is within this range, use this range's end
+      if (currentTime >= rangeStart && currentTime <= rangeEnd) {
+        bufferedEnd = rangeEnd;
+        break;
+      }
+      // If current time is before this range, use the previous range (if any)
+      else if (currentTime < rangeStart && i > 0) {
+        bufferedEnd = _audioElement.buffered.end(i - 1);
+        break;
+      }
+      // If this is the last range and current time is after it
+      else if (i == _audioElement.buffered.length - 1) {
+        bufferedEnd = rangeEnd;
+      }
+    }
+
+    // For HLS live streams, make buffered position relative to seekable window
+    if (_isHlsLiveStream) {
+      final seekable = _audioElement.seekable;
+      if (seekable.length > 0) {
+        final seekableStart = seekable.start(0);
+        final relativeBufferedPosition = bufferedEnd - seekableStart;
+        final relativeCurrentTime = currentTime - seekableStart;
+        return Duration(
+            milliseconds: (relativeBufferedPosition * 1000).toInt());
+      }
+    }
+
+    return Duration(
+      milliseconds: (bufferedEnd * 1000).toInt(),
+    );
   }
 }
 
