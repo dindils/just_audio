@@ -92,15 +92,18 @@ abstract class JustAudioPlayer extends AudioPlayerPlatform {
   /// Broadcasts a playback event from the platform side to the plugin side.
   void broadcastPlaybackEvent() {
     var updateTime = DateTime.now();
+    final currentPos = getCurrentPosition();
+    final bufferedPos = getBufferedPosition();
+    final duration = getDuration();
     _eventController.add(
       PlaybackEventMessage(
         processingState: _processingState,
-        updatePosition: getCurrentPosition(),
+        updatePosition: currentPos,
         updateTime: updateTime,
-        bufferedPosition: getBufferedPosition(),
+        bufferedPosition: bufferedPos,
         // TODO: Icy Metadata
         icyMetadata: null,
-        duration: getDuration(),
+        duration: duration,
         currentIndex: _index,
         androidAudioSessionId: null,
         errorCode: errorCode,
@@ -874,7 +877,26 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
 
   @override
   Future<void> seek(int position) async {
-    _audioElement.currentTime = _resumePos = position / 1000.0;
+    double seekTimeSeconds = position / 1000.0;
+
+    // For HLS live streams, adjust position to seekable window
+    if (_isHlsLiveStream) {
+      final seekable = _audioElement.seekable;
+      if (seekable.length > 0) {
+        final seekableStart = seekable.start(0);
+        final seekableEnd = seekable.end(seekable.length - 1);
+        final seekableDuration = seekableEnd - seekableStart;
+
+        // Position is relative to seekable window, convert to absolute time
+        final relativePositionPercent = seekTimeSeconds / (seekableDuration);
+        final absoluteTime =
+            seekableStart + (relativePositionPercent * seekableDuration);
+
+        seekTimeSeconds = absoluteTime;
+      }
+    }
+
+    _audioElement.currentTime = _resumePos = seekTimeSeconds;
   }
 
   @override
@@ -891,8 +913,21 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
 
   @override
   Duration? get duration {
-    // For live streams, use the current audio element duration
-    // instead of the cached _duration which doesn't update
+    // For HLS live streams, return the seekable duration (sliding window)
+    // instead of the total accumulated duration
+    if (_isHlsLiveStream) {
+      final seekable = _audioElement.seekable;
+      if (seekable.length > 0) {
+        final seekableStart = seekable.start(0);
+        final seekableEnd = seekable.end(seekable.length - 1);
+        final seekableDuration = seekableEnd - seekableStart;
+        return Duration(milliseconds: (seekableDuration * 1000).toInt());
+      } else {
+        return null;
+      }
+    }
+
+    // For non-live streams, use the regular duration
     final seconds = _audioElement.duration;
     final duration = seconds.isFinite
         ? Duration(milliseconds: (seconds * 1000).toInt())
@@ -903,18 +938,41 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
   @override
   Duration get position {
     if (_initialPos != null) return Duration(milliseconds: _initialPos!);
+
     final seconds = _audioElement.currentTime;
+
+    // For HLS live streams, make position relative to the seekable window
+    if (_isHlsLiveStream) {
+      final seekable = _audioElement.seekable;
+      if (seekable.length > 0) {
+        final seekableStart = seekable.start(0);
+        final relativePosition = seconds - seekableStart;
+        return Duration(milliseconds: (relativePosition * 1000).toInt());
+      }
+    }
+
     return Duration(milliseconds: (seconds * 1000).toInt());
   }
 
   @override
   Duration get bufferedPosition {
     if (_audioElement.buffered.length > 0) {
+      final bufferedEnd =
+          _audioElement.buffered.end(_audioElement.buffered.length - 1);
+
+      // For HLS live streams, make buffered position relative to seekable window
+      if (_isHlsLiveStream) {
+        final seekable = _audioElement.seekable;
+        if (seekable.length > 0) {
+          final seekableStart = seekable.start(0);
+          final relativeBufferedPosition = bufferedEnd - seekableStart;
+          return Duration(
+              milliseconds: (relativeBufferedPosition * 1000).toInt());
+        }
+      }
+
       return Duration(
-        milliseconds:
-            (_audioElement.buffered.end(_audioElement.buffered.length - 1) *
-                    1000)
-                .toInt(),
+        milliseconds: (bufferedEnd * 1000).toInt(),
       );
     } else {
       return Duration.zero;
