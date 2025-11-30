@@ -218,7 +218,8 @@ class Html5AudioPlayer extends JustAudioPlayer {
       try {
         _hls = Hls(
           HlsConfig(
-            debug: false.toJS, // Enable to output debug logging in HLS.js
+            liveDurationInfinity:
+                true.toJS, // TODO: Maybe disable if not live stream?
             xhrSetup: ((JSObject xhr, String _) {
               return;
               // Note: Not tested yet, but could be used to set headers for HLS requests.

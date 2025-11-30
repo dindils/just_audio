@@ -20,9 +20,11 @@ extension type Hls._(JSObject _) implements JSObject {
 }
 
 extension type HlsConfig._(JSObject _) implements JSObject {
-  external factory HlsConfig({JSFunction xhrSetup, JSBoolean debug});
+  external factory HlsConfig(
+      {JSFunction xhrSetup, JSBoolean debug, JSBoolean liveDurationInfinity});
   external JSFunction get xhrSetup;
   external JSBoolean get debug;
+  external JSBoolean get liveDurationInfinity;
 }
 
 class HlsError {
